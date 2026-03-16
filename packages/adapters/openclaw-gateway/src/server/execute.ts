@@ -599,12 +599,38 @@ class GatewayWsClient {
   private challengePromise: Promise<string>;
   private resolveChallenge!: (nonce: string) => void;
   private rejectChallenge!: (err: Error) => void;
+  private pingInterval: ReturnType<typeof setInterval> | null = null;
+  private pongTimeout: ReturnType<typeof setTimeout> | null = null;
 
   constructor(private readonly opts: GatewayClientOptions) {
     this.challengePromise = new Promise<string>((resolve, reject) => {
       this.resolveChallenge = resolve;
       this.rejectChallenge = reject;
     });
+  }
+
+  private clearPingInterval() {
+    if (this.pingInterval) {
+      clearInterval(this.pingInterval);
+      this.pingInterval = null;
+    }
+    if (this.pongTimeout) {
+      clearTimeout(this.pongTimeout);
+      this.pongTimeout = null;
+    }
+  }
+
+  private startPingInterval(pingIntervalMs = 30_000, pongTimeoutMs = 10_000) {
+    this.clearPingInterval();
+    this.pingInterval = setInterval(() => {
+      if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
+      this.ws.ping();
+      // Set a pong timeout — if no pong is received within pongTimeoutMs, close the connection
+      this.pongTimeout = setTimeout(() => {
+        void this.opts.onLog("stderr", "[openclaw-gateway] pong not received within timeout; closing connection\n");
+        this.ws?.terminate();
+      }, pongTimeoutMs);
+    }, pingIntervalMs);
   }
 
   async connect(
@@ -622,7 +648,16 @@ class GatewayWsClient {
       this.handleMessage(rawDataToString(data));
     });
 
+    ws.on("pong", () => {
+      // Clear pong timeout on receipt — connection is alive
+      if (this.pongTimeout) {
+        clearTimeout(this.pongTimeout);
+        this.pongTimeout = null;
+      }
+    });
+
     ws.on("close", (code, reason) => {
+      this.clearPingInterval();
       const reasonText = rawDataToString(reason);
       const err = new Error(`gateway closed (${code}): ${reasonText}`);
       this.failPending(err);
@@ -668,6 +703,9 @@ class GatewayWsClient {
       timeoutMs,
     });
 
+    // Start keepalive ping interval after successful connect
+    this.startPingInterval();
+
     return hello;
   }
 
@@ -711,6 +749,7 @@ class GatewayWsClient {
   }
 
   close() {
+    this.clearPingInterval();
     if (!this.ws) return;
     this.ws.close(1000, "paperclip-complete");
     this.ws = null;
