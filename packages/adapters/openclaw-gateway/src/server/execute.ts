@@ -607,6 +607,7 @@ class GatewayWsClient {
       this.resolveChallenge = resolve;
       this.rejectChallenge = reject;
     });
+    this.challengePromise.catch(() => {});
   }
 
   private clearPingInterval() {

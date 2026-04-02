@@ -590,6 +590,7 @@ export function startWorkerRpcHost(options: WorkerRpcHostOptions): WorkerRpcHost
             projectId: input.projectId,
             goalId: input.goalId,
             parentId: input.parentId,
+            inheritExecutionWorkspaceFromIssueId: input.inheritExecutionWorkspaceFromIssueId,
             title: input.title,
             description: input.description,
             priority: input.priority,
@@ -611,6 +612,32 @@ export function startWorkerRpcHost(options: WorkerRpcHostOptions): WorkerRpcHost
 
         async createComment(issueId: string, body: string, companyId: string) {
           return callHost("issues.createComment", { issueId, body, companyId });
+        },
+
+        documents: {
+          async list(issueId: string, companyId: string) {
+            return callHost("issues.documents.list", { issueId, companyId });
+          },
+
+          async get(issueId: string, key: string, companyId: string) {
+            return callHost("issues.documents.get", { issueId, key, companyId });
+          },
+
+          async upsert(input) {
+            return callHost("issues.documents.upsert", {
+              issueId: input.issueId,
+              key: input.key,
+              body: input.body,
+              companyId: input.companyId,
+              title: input.title,
+              format: input.format,
+              changeSummary: input.changeSummary,
+            });
+          },
+
+          async delete(issueId: string, key: string, companyId: string) {
+            return callHost("issues.documents.delete", { issueId, key, companyId });
+          },
         },
       },
 
